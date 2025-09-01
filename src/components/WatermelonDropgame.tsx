@@ -13,17 +13,17 @@ const FRICTION = 0.98;
 const ELASTICITY = 0.5;
 
 const FRUIT_TYPES = [
-  { name: 'Cherry', radius: 10, color: 'hsl(0, 100%, 50%)' },
-  { name: 'Strawberry', radius: 15, color: 'hsl(10, 100%, 50%)' },
-  { name: 'Grape', radius: 20, color: 'hsl(270, 100%, 50%)' },
-  { name: 'Dekopon', radius: 25, color: 'hsl(30, 100%, 50%)' },
-  { name: 'Persimmon', radius: 30, color: 'hsl(20, 100%, 50%)' },
-  { name: 'Apple', radius: 35, color: 'hsl(0, 100%, 60%)' },
-  { name: 'Pear', radius: 40, color: 'hsl(60, 100%, 50%)' },
-  { name: 'Peach', radius: 45, color: 'hsl(15, 100%, 70%)' },
-  { name: 'Pineapple', radius: 50, color: 'hsl(50, 100%, 50%)' },
-  { name: 'Melon', radius: 55, color: 'hsl(120, 100%, 50%)' },
-  { name: 'Watermelon', radius: 60, color: 'hsl(120, 100%, 30%)' },
+  { name: 'Cherry', radius: 10, icon: '🍒' },
+  { name: 'Strawberry', radius: 15, icon: '🍓' },
+  { name: 'Grape', radius: 20, icon: '🍇' },
+  { name: 'Orange', radius: 25, icon: '🍊' }, // closest emoji (orange)
+  { name: 'Persimmon', radius: 30, icon: '🟠' }, // no persimmon emoji, orange circle
+  { name: 'Apple', radius: 35, icon: '🍎' },
+  { name: 'Pear', radius: 40, icon: '🍐' },
+  { name: 'Peach', radius: 45, icon: '🍑' },
+  { name: 'Pineapple', radius: 50, icon: '🍍' },
+  { name: 'Melon', radius: 55, icon: '🍈' },
+  { name: 'Watermelon', radius: 60, icon: '🍉' },
 ];
 
 interface Fruit {
@@ -72,10 +72,10 @@ const WatermelonDropGame: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (gameStateRef.current !== 'playing') return;
-      
+
       const scale = scaleRef.current;
       const speed = moveSpeedRef.current * scale;
-      
+
       if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
         nextFruitPositionRef.current = Math.max(
           FRUIT_TYPES[nextFruitTypeRef.current].radius * scale,
@@ -121,6 +121,7 @@ const WatermelonDropGame: React.FC = () => {
     // Scale canvas for high-DPI displays
     canvas.width = canvasSize.width * window.devicePixelRatio;
     canvas.height = canvasSize.height * window.devicePixelRatio;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
     const gradient = ctx.createLinearGradient(0, 0, 0, canvasSize.height);
@@ -157,30 +158,40 @@ const WatermelonDropGame: React.FC = () => {
 
     ctx.shadowBlur = 0;
 
+    // === Draw dropped fruits (emoji) ===
     fruitsRef.current.forEach(fruit => {
-      ctx.shadowColor = FRUIT_TYPES[fruit.type].color;
+      const emoji = FRUIT_TYPES[fruit.type].icon;
+
+      ctx.shadowColor = "rgba(0,0,0,0.4)";
       ctx.shadowBlur = 15 * scale;
-      ctx.fillStyle = FRUIT_TYPES[fruit.type].color;
-      ctx.beginPath();
-      ctx.arc(fruit.x, fruit.y, fruit.radius, 0, Math.PI * 2);
-      ctx.fill();
+
+      ctx.font = `${fruit.radius * 2}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(emoji, fruit.x, fruit.y);
     });
 
+    // === Draw next fruit preview (emoji instead of colored circle) ===
     if (gameStateRef.current === 'playing') {
       const nextType = nextFruitTypeRef.current;
-      ctx.shadowColor = FRUIT_TYPES[nextType].color;
+      const nextEmoji = FRUIT_TYPES[nextType].icon;
+      const nextRadius = FRUIT_TYPES[nextType].radius * scale;
+
+      ctx.shadowColor = "rgba(0,0,0,0.4)";
       ctx.shadowBlur = 15 * scale;
-      ctx.fillStyle = FRUIT_TYPES[nextType].color;
-      ctx.beginPath();
-      ctx.arc(nextFruitPositionRef.current, 20 * scale, FRUIT_TYPES[nextType].radius * scale, 0, Math.PI * 2);
-      ctx.fill();
+
+      ctx.font = `${nextRadius * 2}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(nextEmoji, nextFruitPositionRef.current, 20 * scale);
+
       ctx.shadowBlur = 0;
-      
+
       // Draw guide line
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.setLineDash([5, 5]);
       ctx.beginPath();
-      ctx.moveTo(nextFruitPositionRef.current, 20 * scale + FRUIT_TYPES[nextType].radius * scale);
+      ctx.moveTo(nextFruitPositionRef.current, 20 * scale + nextRadius);
       ctx.lineTo(nextFruitPositionRef.current, SCALED_CUP_TOP);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -189,12 +200,12 @@ const WatermelonDropGame: React.FC = () => {
     if (gameStateRef.current === 'gameOver') {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
-      
+
       ctx.fillStyle = 'hsl(271, 81%, 56%)';
       ctx.font = `${32 * scale}px monospace`;
       ctx.textAlign = 'center';
       ctx.fillText('GAME OVER', canvasSize.width / 2, canvasSize.height / 2 - 40 * scale);
-      
+
       ctx.fillStyle = 'hsl(193, 76%, 56%)';
       ctx.font = `${16 * scale}px monospace`;
       ctx.fillText(`Score: ${scoreRef.current}`, canvasSize.width / 2, canvasSize.height / 2);
@@ -437,22 +448,22 @@ const WatermelonDropGame: React.FC = () => {
 
       {/* Movement Controls */}
       <div className="flex justify-center space-x-4 w-full">
-        <Button 
-          onClick={moveLeft} 
+        <Button
+          onClick={moveLeft}
           className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4"
           disabled={gameState !== 'playing'}
         >
           <ArrowLeft className="h-4 w-4 mr-1" /> A
         </Button>
-        <Button 
-          onClick={dropCurrentFruit} 
+        <Button
+          onClick={dropCurrentFruit}
           className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4"
           disabled={gameState !== 'playing'}
         >
           DROP
         </Button>
-        <Button 
-          onClick={moveRight} 
+        <Button
+          onClick={moveRight}
           className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4"
           disabled={gameState !== 'playing'}
         >
@@ -467,7 +478,7 @@ const WatermelonDropGame: React.FC = () => {
             Start Game
           </Button>
         )}
-        
+
         {(gameState === 'playing' || gameState === 'paused') && (
           <>
             <Button onClick={togglePause} variant="outline" className="border-primary text-primary text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4">
