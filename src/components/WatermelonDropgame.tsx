@@ -1,7 +1,6 @@
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, RotateCcw } from 'lucide-react';
+import { Play, Pause, RotateCcw, ArrowLeft, ArrowRight } from 'lucide-react';
 
 // Responsive canvas dimensions
 const BASE_WIDTH = 400;
@@ -45,12 +44,15 @@ const WatermelonDropGame: React.FC = () => {
   });
   const [rating, setRating] = useState('');
   const [canvasSize, setCanvasSize] = useState({ width: BASE_WIDTH, height: BASE_WIDTH * ASPECT_RATIO });
+  const [nextFruitPosition, setNextFruitPosition] = useState(BASE_WIDTH / 2);
 
   const gameStateRef = useRef(gameState);
   const fruitsRef = useRef<Fruit[]>([]);
   const scoreRef = useRef(0);
   const nextFruitTypeRef = useRef(Math.floor(Math.random() * 5));
   const scaleRef = useRef(1); // Scaling factor for responsive canvas
+  const nextFruitPositionRef = useRef(BASE_WIDTH / 2);
+  const moveSpeedRef = useRef(5);
 
   // Update canvas size on mount and resize
   const updateCanvasSize = useCallback(() => {
@@ -65,6 +67,35 @@ const WatermelonDropGame: React.FC = () => {
     window.addEventListener('resize', updateCanvasSize);
     return () => window.removeEventListener('resize', updateCanvasSize);
   }, [updateCanvasSize]);
+
+  // Keyboard controls
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (gameStateRef.current !== 'playing') return;
+      
+      const scale = scaleRef.current;
+      const speed = moveSpeedRef.current * scale;
+      
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+        nextFruitPositionRef.current = Math.max(
+          FRUIT_TYPES[nextFruitTypeRef.current].radius * scale,
+          nextFruitPositionRef.current - speed
+        );
+        setNextFruitPosition(nextFruitPositionRef.current);
+      } else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+        nextFruitPositionRef.current = Math.min(
+          canvasSize.width - FRUIT_TYPES[nextFruitTypeRef.current].radius * scale,
+          nextFruitPositionRef.current + speed
+        );
+        setNextFruitPosition(nextFruitPositionRef.current);
+      } else if (e.key === ' ' || e.key === 'Enter') {
+        dropFruit(nextFruitPositionRef.current);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canvasSize]);
 
   const getRating = (score: number) => {
     if (score > 1000) return 'A';
@@ -137,10 +168,22 @@ const WatermelonDropGame: React.FC = () => {
 
     if (gameStateRef.current === 'playing') {
       const nextType = nextFruitTypeRef.current;
+      ctx.shadowColor = FRUIT_TYPES[nextType].color;
+      ctx.shadowBlur = 15 * scale;
       ctx.fillStyle = FRUIT_TYPES[nextType].color;
       ctx.beginPath();
-      ctx.arc(canvasSize.width / 2, 20 * scale, FRUIT_TYPES[nextType].radius * scale, 0, Math.PI * 2);
+      ctx.arc(nextFruitPositionRef.current, 20 * scale, FRUIT_TYPES[nextType].radius * scale, 0, Math.PI * 2);
       ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      // Draw guide line
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(nextFruitPositionRef.current, 20 * scale + FRUIT_TYPES[nextType].radius * scale);
+      ctx.lineTo(nextFruitPositionRef.current, SCALED_CUP_TOP);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     if (gameStateRef.current === 'gameOver') {
@@ -318,6 +361,8 @@ const WatermelonDropGame: React.FC = () => {
     setScore(0);
     setRating('');
     nextFruitTypeRef.current = Math.floor(Math.random() * 5);
+    nextFruitPositionRef.current = canvasSize.width / 2;
+    setNextFruitPosition(nextFruitPositionRef.current);
     setGameState('playing');
     gameStateRef.current = 'playing';
   };
@@ -342,6 +387,31 @@ const WatermelonDropGame: React.FC = () => {
     draw();
   };
 
+  const moveLeft = () => {
+    if (gameStateRef.current !== 'playing') return;
+    const scale = scaleRef.current;
+    nextFruitPositionRef.current = Math.max(
+      FRUIT_TYPES[nextFruitTypeRef.current].radius * scale,
+      nextFruitPositionRef.current - moveSpeedRef.current * scale
+    );
+    setNextFruitPosition(nextFruitPositionRef.current);
+  };
+
+  const moveRight = () => {
+    if (gameStateRef.current !== 'playing') return;
+    const scale = scaleRef.current;
+    nextFruitPositionRef.current = Math.min(
+      canvasSize.width - FRUIT_TYPES[nextFruitTypeRef.current].radius * scale,
+      nextFruitPositionRef.current + moveSpeedRef.current * scale
+    );
+    setNextFruitPosition(nextFruitPositionRef.current);
+  };
+
+  const dropCurrentFruit = () => {
+    if (gameStateRef.current !== 'playing') return;
+    dropFruit(nextFruitPositionRef.current);
+  };
+
   return (
     <div className="flex flex-col items-center space-y-4 p-4 sm:p-6 bg-gaming-dark rounded-lg w-full max-w-md mx-auto">
       <div className="flex flex-col sm:flex-row justify-between w-full text-center gap-4">
@@ -363,6 +433,31 @@ const WatermelonDropGame: React.FC = () => {
           className="block cursor-pointer w-full"
           style={{ height: `${canvasSize.height}px` }}
         />
+      </div>
+
+      {/* Movement Controls */}
+      <div className="flex justify-center space-x-4 w-full">
+        <Button 
+          onClick={moveLeft} 
+          className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4"
+          disabled={gameState !== 'playing'}
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" /> A
+        </Button>
+        <Button 
+          onClick={dropCurrentFruit} 
+          className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4"
+          disabled={gameState !== 'playing'}
+        >
+          DROP
+        </Button>
+        <Button 
+          onClick={moveRight} 
+          className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4"
+          disabled={gameState !== 'playing'}
+        >
+          D <ArrowRight className="h-4 w-4 ml-1" />
+        </Button>
       </div>
 
       <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 w-full justify-center">
@@ -401,8 +496,8 @@ const WatermelonDropGame: React.FC = () => {
       </div>
 
       <div className="text-center text-xs sm:text-sm text-muted-foreground w-full">
-        <p>Tap to drop fruits. Merge same types to make bigger ones!</p>
-        <p>Avoid overflowing the cup. Aim for Watermelon and A rank!</p>
+        <p>Use A/D keys or buttons to move. Tap/click or press Space/Enter to drop fruits.</p>
+        <p>Merge same types to make bigger ones! Avoid overflowing the cup.</p>
       </div>
     </div>
   );
