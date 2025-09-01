@@ -1,17 +1,18 @@
-// File: src/components/WatermelonDropGame.tsx
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, RotateCcw } from 'lucide-react';
 
-const CANVAS_WIDTH = 400;
-const CANVAS_HEIGHT = 600;
+// Responsive canvas dimensions
+const BASE_WIDTH = 400;
+const BASE_HEIGHT = 600;
+const ORIGINAL_ASPECT_RATIO = BASE_HEIGHT / BASE_WIDTH; // 1.5
+const ASPECT_RATIO = ORIGINAL_ASPECT_RATIO * 0.7; // Reduce height by 30% => 1.05
 const CUP_TOP = 50;
-const CUP_BOTTOM = CANVAS_HEIGHT;
-const CUP_LEFT = 0;
-const CUP_RIGHT = CANVAS_WIDTH;
 const GRAVITY = 0.2;
 const FRICTION = 0.98;
 const ELASTICITY = 0.5;
+
 const FRUIT_TYPES = [
   { name: 'Cherry', radius: 10, color: 'hsl(0, 100%, 50%)' },
   { name: 'Strawberry', radius: 15, color: 'hsl(10, 100%, 50%)' },
@@ -43,11 +44,27 @@ const WatermelonDropGame: React.FC = () => {
     return parseInt(localStorage.getItem('watermelon-highScore') || '0');
   });
   const [rating, setRating] = useState('');
+  const [canvasSize, setCanvasSize] = useState({ width: BASE_WIDTH, height: BASE_WIDTH * ASPECT_RATIO });
 
   const gameStateRef = useRef(gameState);
   const fruitsRef = useRef<Fruit[]>([]);
   const scoreRef = useRef(0);
   const nextFruitTypeRef = useRef(Math.floor(Math.random() * 5));
+  const scaleRef = useRef(1); // Scaling factor for responsive canvas
+
+  // Update canvas size on mount and resize
+  const updateCanvasSize = useCallback(() => {
+    const maxWidth = Math.min(window.innerWidth * 0.9, BASE_WIDTH);
+    const height = maxWidth * ASPECT_RATIO; // Reduced height
+    setCanvasSize({ width: maxWidth, height });
+    scaleRef.current = maxWidth / BASE_WIDTH;
+  }, []);
+
+  useEffect(() => {
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, [updateCanvasSize]);
 
   const getRating = (score: number) => {
     if (score > 1000) return 'A';
@@ -64,43 +81,54 @@ const WatermelonDropGame: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+    const scale = scaleRef.current;
+    const CUP_LEFT = 0;
+    const CUP_RIGHT = canvasSize.width;
+    const CUP_BOTTOM = canvasSize.height;
+    const SCALED_CUP_TOP = CUP_TOP * scale;
+
+    // Scale canvas for high-DPI displays
+    canvas.width = canvasSize.width * window.devicePixelRatio;
+    canvas.height = canvasSize.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvasSize.height);
     gradient.addColorStop(0, 'hsl(220, 13%, 8%)');
     gradient.addColorStop(1, 'hsl(220, 13%, 12%)');
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
     ctx.fillStyle = 'hsl(193, 76%, 56%)';
     for (let i = 0; i < 50; i++) {
-      const x = (i * 37) % CANVAS_WIDTH;
-      const y = (i * 41) % CANVAS_HEIGHT;
-      ctx.fillRect(x, y, 1, 1);
+      const x = (i * 37) % canvasSize.width;
+      const y = (i * 41) % canvasSize.height;
+      ctx.fillRect(x, y, 1 * scale, 1 * scale);
     }
 
     ctx.shadowColor = 'hsl(271, 81%, 56%)';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 10 * scale;
     ctx.strokeStyle = 'hsl(271, 81%, 56%)';
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 5 * scale;
     ctx.beginPath();
     ctx.moveTo(CUP_LEFT, CUP_BOTTOM);
-    ctx.lineTo(CUP_LEFT, CUP_TOP);
+    ctx.lineTo(CUP_LEFT, SCALED_CUP_TOP);
     ctx.moveTo(CUP_RIGHT, CUP_BOTTOM);
-    ctx.lineTo(CUP_RIGHT, CUP_TOP);
+    ctx.lineTo(CUP_RIGHT, SCALED_CUP_TOP);
     ctx.moveTo(CUP_LEFT, CUP_BOTTOM);
     ctx.lineTo(CUP_RIGHT, CUP_BOTTOM);
     ctx.stroke();
 
     ctx.strokeStyle = 'hsl(0, 100%, 50%)';
     ctx.beginPath();
-    ctx.moveTo(CUP_LEFT, CUP_TOP);
-    ctx.lineTo(CUP_RIGHT, CUP_TOP);
+    ctx.moveTo(CUP_LEFT, SCALED_CUP_TOP);
+    ctx.lineTo(CUP_RIGHT, SCALED_CUP_TOP);
     ctx.stroke();
 
     ctx.shadowBlur = 0;
 
     fruitsRef.current.forEach(fruit => {
       ctx.shadowColor = FRUIT_TYPES[fruit.type].color;
-      ctx.shadowBlur = 15;
+      ctx.shadowBlur = 15 * scale;
       ctx.fillStyle = FRUIT_TYPES[fruit.type].color;
       ctx.beginPath();
       ctx.arc(fruit.x, fruit.y, fruit.radius, 0, Math.PI * 2);
@@ -111,36 +139,43 @@ const WatermelonDropGame: React.FC = () => {
       const nextType = nextFruitTypeRef.current;
       ctx.fillStyle = FRUIT_TYPES[nextType].color;
       ctx.beginPath();
-      ctx.arc(CANVAS_WIDTH / 2, 20, FRUIT_TYPES[nextType].radius, 0, Math.PI * 2);
+      ctx.arc(canvasSize.width / 2, 20 * scale, FRUIT_TYPES[nextType].radius * scale, 0, Math.PI * 2);
       ctx.fill();
     }
 
     if (gameStateRef.current === 'gameOver') {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
       
       ctx.fillStyle = 'hsl(271, 81%, 56%)';
-      ctx.font = '32px monospace';
+      ctx.font = `${32 * scale}px monospace`;
       ctx.textAlign = 'center';
-      ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+      ctx.fillText('GAME OVER', canvasSize.width / 2, canvasSize.height / 2 - 40 * scale);
       
       ctx.fillStyle = 'hsl(193, 76%, 56%)';
-      ctx.font = '16px monospace';
-      ctx.fillText(`Score: ${scoreRef.current}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-      ctx.fillText(`Rating: ${rating}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+      ctx.font = `${16 * scale}px monospace`;
+      ctx.fillText(`Score: ${scoreRef.current}`, canvasSize.width / 2, canvasSize.height / 2);
+      ctx.fillText(`Rating: ${rating}`, canvasSize.width / 2, canvasSize.height / 2 + 30 * scale);
     }
 
     ctx.fillStyle = 'hsl(322, 81%, 56%)';
-    ctx.font = 'bold 24px monospace';
+    ctx.font = `bold ${24 * scale}px monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(scoreRef.current.toString(), CANVAS_WIDTH / 2, 50);
-  }, [rating]);
+    ctx.fillText(scoreRef.current.toString(), canvasSize.width / 2, SCALED_CUP_TOP);
+  }, [rating, canvasSize]);
 
   const update = useCallback(() => {
     if (gameStateRef.current !== 'playing') return;
 
+    const scale = scaleRef.current;
+    const CUP_LEFT = 0;
+    const CUP_RIGHT = canvasSize.width;
+    const CUP_BOTTOM = canvasSize.height;
+    const SCALED_CUP_TOP = CUP_TOP * scale;
+    const SCALED_GRAVITY = GRAVITY * scale;
+
     fruitsRef.current.forEach(fruit => {
-      fruit.vy += GRAVITY;
+      fruit.vy += SCALED_GRAVITY;
       fruit.x += fruit.vx;
       fruit.y += fruit.vy;
       fruit.vx *= FRICTION;
@@ -159,7 +194,7 @@ const WatermelonDropGame: React.FC = () => {
         fruit.vy = -fruit.vy * ELASTICITY;
       }
 
-      if (fruit.y - fruit.radius < CUP_TOP) {
+      if (fruit.y - fruit.radius < SCALED_CUP_TOP) {
         setGameState('gameOver');
         gameStateRef.current = 'gameOver';
         setRating(getRating(scoreRef.current));
@@ -185,7 +220,7 @@ const WatermelonDropGame: React.FC = () => {
               vx: (f1.vx + f2.vx) / 2,
               vy: (f1.vy + f2.vy) / 2,
               type: newType,
-              radius: FRUIT_TYPES[newType].radius,
+              radius: FRUIT_TYPES[newType].radius * scale,
             };
             fruitsRef.current.splice(j, 1);
             fruitsRef.current.splice(i, 1);
@@ -220,7 +255,7 @@ const WatermelonDropGame: React.FC = () => {
         }
       }
     }
-  }, [highScore]);
+  }, [highScore, canvasSize]);
 
   const gameLoop = useCallback(() => {
     update();
@@ -238,11 +273,12 @@ const WatermelonDropGame: React.FC = () => {
 
   const dropFruit = useCallback((x: number) => {
     if (gameStateRef.current === 'playing') {
+      const scale = scaleRef.current;
       const type = nextFruitTypeRef.current;
-      const radius = FRUIT_TYPES[type].radius;
+      const radius = FRUIT_TYPES[type].radius * scale;
       fruitsRef.current.push({
-        x: Math.max(CUP_LEFT + radius, Math.min(x, CUP_RIGHT - radius)),
-        y: CUP_TOP + radius + 10, // Fixed to start below CUP_TOP
+        x: Math.max(0 + radius, Math.min(x, canvasSize.width - radius)),
+        y: (CUP_TOP + FRUIT_TYPES[type].radius + 10) * scale,
         vx: 0,
         vy: 0,
         type,
@@ -250,16 +286,17 @@ const WatermelonDropGame: React.FC = () => {
       });
       nextFruitTypeRef.current = Math.floor(Math.random() * 5);
     }
-  }, []);
+  }, [canvasSize]);
 
   const handleClick = useCallback((e: MouseEvent | TouchEvent) => {
     if (gameStateRef.current !== 'playing') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = ('touches' in e ? e.touches[0].clientX : e.clientX) - rect.left;
+    const scale = canvasSize.width / canvas.offsetWidth;
+    const x = (('touches' in e ? e.touches[0].clientX : e.clientX) - rect.left) * scale;
     dropFruit(x);
-  }, [dropFruit]);
+  }, [dropFruit, canvasSize]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -305,48 +342,45 @@ const WatermelonDropGame: React.FC = () => {
     draw();
   };
 
-  useEffect(() => {
-    draw();
-  }, [draw]);
-
   return (
-    <div className="flex flex-col items-center space-y-6 p-6 bg-gaming-dark rounded-lg">
-      <div className="flex justify-between w-full max-w-md text-center">
+    <div className="flex flex-col items-center space-y-4 p-4 sm:p-6 bg-gaming-dark rounded-lg w-full max-w-md mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between w-full text-center gap-4">
         <div>
-          <div className="text-sm text-muted-foreground">Score</div>
-          <div className="text-2xl font-bold text-gaming-cyan">{score}</div>
+          <div className="text-xs sm:text-sm text-muted-foreground">Score</div>
+          <div className="text-lg sm:text-2xl font-bold text-gaming-cyan">{score}</div>
         </div>
         <div>
-          <div className="text-sm text-muted-foreground">High Score</div>
-          <div className="text-2xl font-bold text-gaming-purple">{highScore}</div>
+          <div className="text-xs sm:text-sm text-muted-foreground">High Score</div>
+          <div className="text-lg sm:text-2xl font-bold text-gaming-purple">{highScore}</div>
         </div>
       </div>
 
-      <div className="relative border-2 border-border rounded-lg overflow-hidden neon-glow">
+      <div className="relative border-2 border-border rounded-lg overflow-hidden neon-glow w-full" style={{ maxWidth: '400px' }}>
         <canvas
           ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="block cursor-pointer"
+          width={canvasSize.width}
+          height={canvasSize.height}
+          className="block cursor-pointer w-full"
+          style={{ height: `${canvasSize.height}px` }}
         />
       </div>
 
-      <div className="flex space-x-4">
+      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 w-full justify-center">
         {gameState === 'waiting' && (
-          <Button onClick={startGame} className="bg-primary hover:bg-primary/80 neon-glow">
-            <Play className="h-4 w-4 mr-2" />
+          <Button onClick={startGame} className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4">
+            <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
             Start Game
           </Button>
         )}
         
         {(gameState === 'playing' || gameState === 'paused') && (
           <>
-            <Button onClick={togglePause} variant="outline" className="border-primary text-primary">
-              {gameState === 'playing' ? <Pause className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+            <Button onClick={togglePause} variant="outline" className="border-primary text-primary text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4">
+              {gameState === 'playing' ? <Pause className="h-3 w-3 sm:h-4 sm:w-4 mr-2" /> : <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />}
               {gameState === 'playing' ? 'Pause' : 'Resume'}
             </Button>
-            <Button onClick={resetGame} variant="outline" className="border-destructive text-destructive">
-              <RotateCcw className="h-4 w-4 mr-2" />
+            <Button onClick={resetGame} variant="outline" className="border-destructive text-destructive text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4">
+              <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
               Reset
             </Button>
           </>
@@ -354,20 +388,20 @@ const WatermelonDropGame: React.FC = () => {
 
         {gameState === 'gameOver' && (
           <>
-            <Button onClick={startGame} className="bg-primary hover:bg-primary/80 neon-glow">
-              <Play className="h-4 w-4 mr-2" />
+            <Button onClick={startGame} className="bg-primary hover:bg-primary/80 neon-glow text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4">
+              <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
               Play Again
             </Button>
-            <Button onClick={resetGame} variant="outline" className="border-secondary text-secondary-foreground">
-              <RotateCcw className="h-4 w-4 mr-2" />
+            <Button onClick={resetGame} variant="outline" className="border-secondary text-secondary-foreground text-xs sm:text-sm py-2 sm:py-2 px-3 sm:px-4">
+              <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
               Reset
             </Button>
           </>
         )}
       </div>
 
-      <div className="text-center text-sm text-muted-foreground max-w-md">
-        <p>Click or tap to drop fruits. Merge same types to make bigger ones!</p>
+      <div className="text-center text-xs sm:text-sm text-muted-foreground w-full">
+        <p>Tap to drop fruits. Merge same types to make bigger ones!</p>
         <p>Avoid overflowing the cup. Aim for Watermelon and A rank!</p>
       </div>
     </div>
